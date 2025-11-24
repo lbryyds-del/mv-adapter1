@@ -57,7 +57,7 @@ model = dict(
                 cls_mid=64,
                 n_head=2,
                 seq_len=max_frames,
-                temporal=['c', 'p'],
+                temporal=['c'],
                 pca=False,
             )
         ),
