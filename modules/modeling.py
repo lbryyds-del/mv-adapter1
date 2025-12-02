@@ -548,40 +548,11 @@ class BaselineModel(nn.Module):
         self.reset_task_parameters()
         return pred_global, sim_scores, ep_cls
 
-    # ------------------------------------------------------------------
-    # 普通推理 (不变)
-    # ------------------------------------------------------------------
-    @torch.no_grad()
-    def forward_infer(self, batch: Dict[str, Any]):
-        self.reset_task_parameters()  # 保险起见
-
-        videos = batch["video_batch"]
-        v_mask = batch["v_mask"]
-        videos, v_mask = self._flatten_video_episode(videos, v_mask)
-        video_emb = self.encode_video_batch(videos, v_mask)
-
-        device = video_emb.device
-        if "episode_class_ids" in batch and batch["episode_class_ids"] is not None:
-            ep_ids = self._to_int_list(batch["episode_class_ids"])
-            ep_cls = torch.tensor(ep_ids, device=device, dtype=torch.long)
-        else:
-            if not self.all_labels:
-                raise RuntimeError("没有 all_labels / episode_class_ids")
-            ep_cls = torch.arange(len(self.all_labels), device=device, dtype=torch.long)
-
-        ep_text_proto = self._build_episode_text_proto(ep_cls)
-
-        logit_scale = self.clip.logit_scale.exp().to(device)
-        sim_scores = logit_scale * torch.matmul(video_emb, ep_text_proto.t())
-        pred_local = torch.argmax(sim_scores, dim=1)
-        pred_global = torch.tensor([int(ep_cls[i]) for i in pred_local.tolist()], device=device)
-
-        return pred_global, sim_scores, ep_cls
-
     def forward(self, batch: Dict[str, Any]):
         if self.training:
             return self.forward_episode_train(batch)
         else:
             if ("support_videos" in batch) and ("support_v_mask" in batch) and ("support_label" in batch):
                 return self.forward_fewshot_infer(batch)
-            return self.forward_infer(batch)
+            raise RuntimeError("推理模式仅支持 few-shot，请提供 support 数据。")
+
