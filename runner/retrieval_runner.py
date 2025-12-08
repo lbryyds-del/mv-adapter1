@@ -171,6 +171,15 @@ class RetrievalRunner(Runner):
                 lr_str = ",".join([f"{lr:.2e}" for lr in lr_list])
                 train_iter.set_postfix(loss=f"{self.loss_meter.avg:.4f}", lr=lr_str)
 
+                msg = (
+                    f"[Train] epoch={self.epoch + 1}/{self.max_epochs} "
+                    f"step={step + 1}/{self.max_steps} "
+                    f"loss(cur/avg)={self.loss_meter.val:.4f}/{self.loss_meter.avg:.4f} "
+                    f"fwd_time(avg)={self.f_meter.avg:.4f}s bwd_time(avg)={self.b_meter.avg:.4f}s "
+                    f"lr={lr_str}"
+                )
+                my_log(msg, logger="result")
+
             self.time_meter.update(time() - start_time)
             start_time = time()
 
@@ -189,6 +198,7 @@ class RetrievalRunner(Runner):
         td_cfg = getattr(self.cfg, "test_dataset", {})
         max_eval_eps = td_cfg.get("eval_episodes", 10000)
         eval_shots = td_cfg.get("eval_shots", [1, 5])
+        eval_log_interval = td_cfg.get("log_interval", 20)
 
         rank = dist.get_rank() if dist.is_initialized() else 0
         val_iter = tqdm(
@@ -221,6 +231,17 @@ class RetrievalRunner(Runner):
 
                     acc = (pred_global == labels).float().mean().item() * 100.0
                     shot2acc[shot].append(acc)
+
+                if rank == 0 and eval_log_interval > 0 and (seen_eps + 1) % eval_log_interval == 0:
+                    detail_msg = [
+                        f"shot={s}: {torch.tensor(a).float().mean().item():.2f}% ({len(a)} eps)"
+                        for s, a in shot2acc.items() if len(a) > 0
+                    ]
+                    msg = (
+                        f"[Eval Progress] processed {seen_eps + 1} episodes "
+                        f"| " + " | ".join(detail_msg)
+                    )
+                    my_log(msg, logger="result")
 
                 seen_eps += 1
                 if seen_eps >= max_eval_eps:
